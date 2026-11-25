@@ -1,0 +1,1 @@
+{"name": "Klientská zóna – Lukáš Rybčák", "short_name": "Moje zóna", "scope": "./", "display": "standalone", "background_color": "#f5f5f7", "theme_color": "#004A49", "lang": "cs", "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}]}
