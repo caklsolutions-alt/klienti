@@ -6,7 +6,7 @@
 #   --edits edits.json = dokument crm/edits z databáze CRM (Sebastiánovy ruční úpravy); jde jen do jeho appky
 # Sebastiánova appka (celé CRM jen na čtení) = složka webAdmin.slug, data šifrovaná klíčem webAdmin.key.
 # Klíče jsou jen v CRM (clients[].web.key, webAdmin.key), do repozitáře se nikdy nedostanou.
-import json, os, sys, base64, shutil, re
+import json, os, sys, base64, shutil, re, datetime
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,6 +45,20 @@ for c in crm['clients']:
             s = os.path.join(strat, c['id'], os.path.basename(p))
             if not os.path.exists(out) and os.path.exists(s):
                 os.makedirs(os.path.dirname(out), exist_ok=True); open(out, 'wb').write(enc(k, open(s, 'rb').read()))
+    # termín natáčení pro kartu v zóně (appka ho po kliknutí zapíše hned, tady se srovná s CRM)
+    sn = [s for s in d.get('shootNext', []) if s.get('c') == c['id'] and s.get('status') in ('ok', 'ask')]
+    za = {'c': c['id'], 'state': 'none'}
+    if sn:
+        s = sn[0]; za = {'c': c['id'], 'state': s['status'], 'date': s['date'], 'time': s.get('time', ''), 'note': s.get('note', ''), 'from': s.get('from', ''), 'u': s.get('u', '')}
+    ap = os.path.join(zd, 'ask.enc'); same = False
+    if os.path.exists(ap):
+        try:
+            b = open(ap, 'rb').read(); old = json.loads(AESGCM(k).decrypt(b[:12], b[12:], None))
+            same = all(old.get(f, '') == za.get(f, '') for f in ('state', 'date', 'time', 'note', 'from'))
+        except Exception: same = False
+    if not same and not (za['state'] == 'none' and not os.path.exists(ap)):
+        za['at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        open(ap, 'wb').write(enc(k, json.dumps(za, ensure_ascii=False).encode()))
     done.append(slug)
 wa = crm.get('webAdmin')
 if wa and re.fullmatch(r'[a-z0-9-]+', wa.get('slug', '')) and os.path.exists(os.path.join(ROOT, wa['slug'], 'index.html')):

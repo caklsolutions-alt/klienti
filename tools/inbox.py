@@ -1,6 +1,6 @@
 # Úpravy z mobilní appky CRM (Sebastián je ukládá šifrovaně do crm/inbox/*.enc přes GitHub API).
 # python3 tools/inbox.py <crm_data.json>            → vypíše dešifrované úpravy (JSON), nic nemění
-# python3 tools/inbox.py <crm_data.json> --apply    → promítne je do crm_data.json (shoots, shootsOff, položky, invMarks),
+# python3 tools/inbox.py <crm_data.json> --apply    → promítne je do crm_data.json (shoots, shootsOff, asks, položky, invMarks),
 #                                                      zapíše jejich id do inboxDone a smaže zpracované soubory z crm/inbox/
 # Klíč je webAdmin.key v crm_data.json (nikdy ho nevypisuj).
 import json, os, sys, base64, glob, datetime
@@ -28,19 +28,25 @@ if not apply:
 
 today = datetime.date.today().isoformat()
 done = list(d.get('inboxDone') or [])
-d.setdefault('shoots', []); d.setdefault('shootsOff', []); d.setdefault('invMarks', {})
+d.setdefault('shoots', []); d.setdefault('shootsOff', []); d.setdefault('invMarks', {}); d.setdefault('asks', [])
 items = {it['id']: it for c in d['clients'] for it in c.get('items', [])}
 log = []
 for op in ops:
     t, u = op.get('t'), op.get('u', '')
     if op.get('id') in done: pass
+    elif t == 'ask' and op.get('c') and op.get('date'):
+        d['asks'] = [x for x in d['asks'] if x.get('c') != op['c']]
+        d['asks'].append({'c': op['c'], 'date': op['date'], 'time': op.get('time', ''), 'note': op.get('note', ''), 'from': op.get('from', ''), 'at': u, 'u': u})
+        log.append(f"návrh natáčení {op['c']} {op['date']} {op.get('time','')}")
     elif t == 'shoot' and op.get('c') and op.get('date'):
+        d['asks'] = [x for x in d['asks'] if x.get('c') != op['c'] or (x.get('u') or '') > u]
         for s in [s for s in d['shoots'] if s.get('c') == op['c'] and s.get('date', '') >= today and s.get('date') != op['date']]:
             d['shootsOff'].append({'c': s['c'], 'date': s['date'], 'u': u})
         d['shoots'] = [s for s in d['shoots'] if not (s.get('c') == op['c'] and (s.get('date') == op['date'] or s.get('date', '') >= today))]
         d['shoots'].append({'c': op['c'], 'date': op['date'], 'time': op.get('time', ''), 'note': op.get('note', ''), 'u': u})
         log.append(f"natáčení {op['c']} {op['date']} {op.get('time','')}")
     elif t == 'unshoot' and op.get('c') and op.get('date'):
+        d['asks'] = [x for x in d['asks'] if x.get('c') != op['c'] or (x.get('u') or '') > u]
         d['shoots'] = [s for s in d['shoots'] if not (s.get('c') == op['c'] and s.get('date') == op['date'])]
         d['shootsOff'].append({'c': op['c'], 'date': op['date'], 'u': u}); log.append(f"zrušeno natáčení {op['c']} {op['date']}")
     elif t == 'item' and op.get('item') in items and isinstance(op.get('patch'), dict):
