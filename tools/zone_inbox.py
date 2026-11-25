@@ -72,7 +72,9 @@ items_of = {c['id']: {i['id'] for i in c.get('items', [])} for c in d['clients']
 for o in ops:
     if o['_id'] in done: continue
     c = o['_c']; cid = c['id']; u = o.get('u') or now
-    if o.get('t') == 'order' and isinstance(o.get('ids'), list):
+    if o.get('t') == 'ping':
+        pass  # test spojení ze zóny, nic se nemění
+    elif o.get('t') == 'order' and isinstance(o.get('ids'), list):
         ids = [str(x) for x in o['ids'] if str(x) in items_of[cid]][:100]
         eo = (edits.get('order') or {}).get(cid) or {}
         if not ids: info.append({'c': cid, 'msg': 'pořadí videí bez známých videí – přeskočeno'})
