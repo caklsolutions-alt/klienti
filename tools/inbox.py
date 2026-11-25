@@ -1,6 +1,6 @@
 # Úpravy z mobilní appky CRM (Sebastián je ukládá šifrovaně do crm/inbox/*.enc přes GitHub API).
 # python3 tools/inbox.py <crm_data.json>            → vypíše dešifrované úpravy (JSON), nic nemění
-# python3 tools/inbox.py <crm_data.json> --apply    → promítne je do crm_data.json (shoots, shootsOff, asks, položky, invMarks),
+# python3 tools/inbox.py <crm_data.json> --apply    → promítne je do crm_data.json (shoots, shootsOff, asks, pořadí videí clients[].order, položky, invMarks),
 #                                                      zapíše jejich id do inboxDone a smaže zpracované soubory z crm/inbox/
 # Klíč je webAdmin.key v crm_data.json (nikdy ho nevypisuj).
 import json, os, sys, base64, glob, datetime
@@ -34,6 +34,11 @@ log = []
 for op in ops:
     t, u = op.get('t'), op.get('u', '')
     if op.get('id') in done: pass
+    elif t == 'order' and op.get('c') and isinstance(op.get('ids'), list):
+        cc = next((x for x in d['clients'] if x['id'] == op['c']), None)
+        if cc is not None and (cc.get('orderU') or '') <= u:
+            cc['order'] = [str(x) for x in op['ids']][:100]; cc['orderU'] = u; cc['orderBy'] = op.get('by') or 'seb'
+            log.append(f"pořadí videí {op['c']} ({cc['orderBy']}, {len(cc['order'])})")
     elif t == 'ask' and op.get('c') and op.get('date'):
         d['asks'] = [x for x in d['asks'] if x.get('c') != op['c']]
         d['asks'].append({'c': op['c'], 'date': op['date'], 'time': op.get('time', ''), 'note': op.get('note', ''), 'from': op.get('from', ''), 'at': u, 'u': u})

@@ -50,13 +50,15 @@ for c in crm['clients']:
     za = {'c': c['id'], 'state': 'none'}
     if sn:
         s = sn[0]; za = {'c': c['id'], 'state': s['status'], 'date': s['date'], 'time': s.get('time', ''), 'note': s.get('note', ''), 'from': s.get('from', ''), 'u': s.get('u', '')}
+    cz = d['clients'][0]
+    if cz.get('order'): za['order'] = {'ids': cz['order'], 'u': cz.get('orderU', ''), 'by': cz.get('orderBy', '')}
     ap = os.path.join(zd, 'ask.enc'); same = False
     if os.path.exists(ap):
         try:
             b = open(ap, 'rb').read(); old = json.loads(AESGCM(k).decrypt(b[:12], b[12:], None))
-            same = all(old.get(f, '') == za.get(f, '') for f in ('state', 'date', 'time', 'note', 'from'))
+            same = all(old.get(f, '') == za.get(f, '') for f in ('state', 'date', 'time', 'note', 'from', 'order'))
         except Exception: same = False
-    if not same and not (za['state'] == 'none' and not os.path.exists(ap)):
+    if not same and not (za['state'] == 'none' and not za.get('order') and not os.path.exists(ap)):
         za['at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         open(ap, 'wb').write(enc(k, json.dumps(za, ensure_ascii=False).encode()))
     done.append(slug)
