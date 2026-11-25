@@ -1,16 +1,20 @@
 # Aktualizace webu klientských zón (spouští ji automatická kontrola CRM).
-# python3 tools/update.py <crm_data.json> <zony_dir> [thumbs_dir] [strat_dir]
+# python3 tools/update.py <crm_data.json> <zony_dir> [thumbs_dir] [strat_dir] [--edits edits.json]
 #   zony_dir/<idKlienta>/data.json  = data zóny (stejná jako v artefaktu zóny)
 #   thumbs_dir/<id>.webp            = nové náhledovky (zkopírují se, jen když v repu chybí)
 #   strat_dir/<idKlienta>/strategie.pdf + p1.png… = nová strategie (zašifruje se, jen když v repu chybí)
-# Klíče jsou jen v CRM (clients[].web.key), do repozitáře se nikdy nedostanou.
+#   --edits edits.json = dokument crm/edits z databáze CRM (Sebastiánovy ruční úpravy); jde jen do jeho appky
+# Sebastiánova appka (celé CRM jen na čtení) = složka webAdmin.slug, data šifrovaná klíčem webAdmin.key.
+# Klíče jsou jen v CRM (clients[].web.key, webAdmin.key), do repozitáře se nikdy nedostanou.
 import json, os, sys, base64, shutil, re
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-crm = json.load(open(sys.argv[1])); zones = sys.argv[2]
-thumbs = sys.argv[3] if len(sys.argv) > 3 else None
-strat = sys.argv[4] if len(sys.argv) > 4 else None
+argv = sys.argv[1:]; edits_f = None
+if '--edits' in argv: i = argv.index('--edits'); edits_f = argv[i + 1]; del argv[i:i + 2]
+crm = json.load(open(argv[0])); zones = argv[1]
+thumbs = argv[2] if len(argv) > 2 else None
+strat = argv[3] if len(argv) > 3 else None
 
 def key(s): k = base64.urlsafe_b64decode(s + '=' * (-len(s) % 4)); assert len(k) == 32; return k
 def enc(k, b): iv = os.urandom(12); return iv + AESGCM(k).encrypt(iv, b, None)
@@ -42,4 +46,25 @@ for c in crm['clients']:
             if not os.path.exists(out) and os.path.exists(s):
                 os.makedirs(os.path.dirname(out), exist_ok=True); open(out, 'wb').write(enc(k, open(s, 'rb').read()))
     done.append(slug)
+wa = crm.get('webAdmin')
+if wa and re.fullmatch(r'[a-z0-9-]+', wa.get('slug', '')) and os.path.exists(os.path.join(ROOT, wa['slug'], 'index.html')):
+    ad = os.path.join(ROOT, wa['slug']); k = key(wa['key'])
+    ed = {}
+    if edits_f and os.path.exists(edits_f):
+        try:
+            ed = json.load(open(edits_f))
+            if not isinstance(ed, dict): ed = {}
+        except Exception: ed = {}
+    import datetime
+    blob = dict(crm); blob['_edits'] = ed; blob['_stamp'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    open(os.path.join(ad, 'data.enc'), 'wb').write(enc(k, json.dumps(blob, ensure_ascii=False).encode()))
+    zslugs = [c['web']['slug'] for c in crm['clients'] if c.get('web')]
+    for c in crm['clients']:
+        for it in c.get('items', []):
+            t = it.get('thumb')
+            if not t or os.path.exists(os.path.join(ad, t)): continue
+            cands = ([os.path.join(thumbs, os.path.basename(t))] if thumbs else []) + [os.path.join(ROOT, s, t) for s in zslugs]
+            for s in cands:
+                if os.path.exists(s): os.makedirs(os.path.join(ad, 'thumbs'), exist_ok=True); shutil.copy(s, os.path.join(ad, t)); break
+    done.append(wa['slug'] + ' (appka)')
 print('OK', ' '.join(done))
